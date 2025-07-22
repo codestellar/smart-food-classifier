@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Smart Food Classifier</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body>
+    <h1>🍔 Smart Food Classifier</h1>
+    <p>
+      Upload a food image to predict if it is a Fruit, Vegetable, Snack or
+      Drink.
+    </p>
+
+    <input type="file" id="imageUpload" accept="image/*" />
+    <br /><br />
+    <img
+      id="uploadedImage"
+      src="#"
+      alt="Uploaded Image"
+      style="max-width: 300px; display: none"
+    />
+    <div id="label-container"></div>
+    <hr />
+    <div id="loading-message" style="display: none">
+      🤖 Thinking of something smart about your food...
+    </div>
+
+    <div
+      id="gemini-response"
+      style="margin-top: 20px; font-style: italic"
+    ></div>
+
+    <!-- TensorFlow.js + Teachable Machine -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+    <script>
+      const MODEL_URL = "/static/my_model/";
+      let model, labelContainer;
+
+      async function loadModel() {
+        const modelURL = MODEL_URL + "model.json";
+        const metadataURL = MODEL_URL + "metadata.json";
+        model = await tmImage.load(modelURL, metadataURL);
+        labelContainer = document.getElementById("label-container");
+      }
+
+      async function predictFromImage(image) {
+        const prediction = await model.predict(image);
+        labelContainer.innerHTML = "";
+        prediction.forEach((p) => {
+          const label = `${p.className}: ${p.probability.toFixed(2)}`;
+          const div = document.createElement("div");
+          div.textContent = label;
+          labelContainer.appendChild(div);
+        });
+
+        // Pass the top prediction to Gemini
+        const topPrediction = prediction.reduce((max, p) =>
+          p.probability > max.probability ? p : max
+        );
+        fetchGeminiAdvice(topPrediction.className);
+      }
+
+      // Function to fetch advice from Gemini
+      async function fetchGeminiAdvice(category) {
+        const loadingMessage = document.getElementById("loading-message");
+        const responseBox = document.getElementById("gemini-response");
+        loadingMessage.style.display = "block";
+        responseBox.innerText = "";
+
+        try {
+          const res = await fetch("/gemini", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ category }),
+          });
+
+          const data = await res.json();
+          responseBox.innerText = data.advice;
+        } catch (e) {
+          responseBox.innerText =
+            "Something went wrong fetching Gemini advice.";
+        } finally {
+          loadingMessage.style.display = "none";
+        }
+      }
+
+      document
+        .getElementById("imageUpload")
+        .addEventListener("change", async function (event) {
+          const file = event.target.files[0];
+          if (!file) return;
+
+          const img = document.getElementById("uploadedImage");
+          img.src = window.URL.createObjectURL(file);
+          img.style.display = "block";
+
+          img.onload = async () => {
+            await predictFromImage(img);
+          };
+        });
+
+      loadModel();
+    </script>
+  </body>
+</html>
