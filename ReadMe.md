@@ -22,7 +22,14 @@ source ./venv/Scripts/activate
 ````
 pip install -r requirements.txt
 ````
-11. Run the following command, to run application
+11. Create Gemini API Key from [Google AI Studio](https://aistudio.google.com)
+12. Create a .env file and add this:
+````
+GEMINI_API_KEY=your_api_key_here
+````
+13.  Run the following command, to run application
 ````
 python app.py
 ````
+
+![alt](./images/food_classifier.gif)
