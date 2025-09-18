@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Food Classifier</title>
+    <!-- Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .progress-bar-container {
+            height: 1.5rem;
+            background-color: #e5e7eb;
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            transition: width 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 p-6 flex items-center justify-center min-h-screen">
+
+    <div class="max-w-4xl w-full bg-white rounded-xl shadow-lg p-8 flex flex-col md:flex-row items-center space-y-8 md:space-y-0 md:space-x-8">
+        <div class="flex-1 w-full flex flex-col items-center">
+            <h1 class="text-3xl md:text-4xl font-extrabold text-center mb-2">Smart Food Classifier</h1>
+            <p class="text-md text-gray-500 mb-6 text-center">Powered by Google Teachable Machine</p>
+            
+            <div class="relative w-full max-w-sm rounded-lg overflow-hidden border-4 border-gray-200 shadow-inner">
+                <video id="webcam" autoplay muted playsinline class="w-full h-full object-cover"></video>
+                <img id="imagePreview" class="hidden w-full h-full object-contain" alt="Image Preview">
+                <div id="video-overlay" class="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75 backdrop-blur-sm transition-opacity duration-300">
+                    <p class="text-white text-lg font-medium">Click "Start" to begin</p>
+                </div>
+            </div>
+
+            <div class="mt-6 flex space-x-4">
+                <button id="startButton" class="px-8 py-3 bg-blue-600 text-white font-semibold rounded-full shadow-lg hover:bg-blue-700 transition-colors duration-300">
+                    Start Webcam
+                </button>
+                <label for="imageUpload" class="px-8 py-3 bg-green-600 text-white font-semibold rounded-full shadow-lg hover:bg-green-700 transition-colors duration-300 cursor-pointer text-center">
+                    Upload Image
+                    <input type="file" id="imageUpload" class="hidden" accept="image/*">
+                </label>
+                <button id="resetButton" class="hidden px-8 py-3 bg-gray-400 text-white font-semibold rounded-full shadow-lg hover:bg-gray-500 transition-colors duration-300">
+                    Reset
+                </button>
+            </div>
+        </div>
+
+        <div class="flex-1 w-full space-y-6">
+            <div class="text-center">
+                <h2 class="text-2xl font-bold mb-4">Predictions</h2>
+                <div id="loadingIndicator" class="hidden text-sm text-gray-500 animate-pulse">
+                    Loading model...
+                </div>
+            </div>
+
+            <div id="predictionResults" class="w-full space-y-4">
+                <!-- Prediction bars will be dynamically inserted here -->
+            </div>
+            
+            <div id="instructions" class="mt-8 text-sm text-gray-500 bg-gray-50 p-4 rounded-md shadow-inner">
+                <h3 class="font-bold text-gray-700">Instructions:</h3>
+                <ul class="list-disc list-inside mt-2 space-y-1">
+                    <li>1. In your browser, open your Teachable Machine project.</li>
+                    <li>2. Click "Export Model".</li>
+                    <li>3. Select "TensorFlow.js" and click "Upload my model".</li>
+                    <li>4. Copy the URL provided under "Shareable Link".</li>
+                    <li>5. Paste that URL into the `const URL` variable in this code.</li>
+                    <li>6. Reload this page.</li>
+                    <li>7. Click "Start Webcam" or "Upload Image" to begin.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- TensorFlow.js and Teachable Machine libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+
+    <script type="text/javascript">
+        // Paste the URL from your Teachable Machine "Export Model" panel here.
+        // It should look something like this: https://teachablemachine.withgoogle.com/models/abc-123/
+        const URL = "https://teachablemachine.withgoogle.com/models/pHQ_FEGV2/";
+
+        const video = document.getElementById("webcam");
+        const imagePreview = document.getElementById("imagePreview");
+        const videoOverlay = document.getElementById("video-overlay");
+        const startButton = document.getElementById("startButton");
+        const imageUpload = document.getElementById("imageUpload");
+        const resetButton = document.getElementById("resetButton");
+        const loadingIndicator = document.getElementById("loadingIndicator");
+        const predictionResults = document.getElementById("predictionResults");
+
+        let model, webcam, maxPredictions;
+        let isPredicting = false;
+        let isWebcamMode = true;
+
+        // Function to initialize the model and start the webcam
+        async function init() {
+            if (URL === "YOUR_TEACHABLE_MACHINE_MODEL_URL") {
+                console.error("Please update the 'URL' variable with your Teachable Machine model URL.");
+                return;
+            }
+
+            loadingIndicator.classList.remove("hidden");
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            try {
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+                loadingIndicator.classList.add("hidden");
+                videoOverlay.classList.add("hidden");
+
+                await startWebcam();
+                startButton.classList.add("hidden");
+                imageUpload.parentElement.classList.add("hidden");
+                resetButton.classList.remove("hidden");
+
+                // Create prediction bars
+                for (let i = 0; i < maxPredictions; i++) {
+                    const classPrediction = document.createElement("div");
+                    classPrediction.classList.add("w-full", "space-y-1");
+                    
+                    const label = document.createElement("div");
+                    label.classList.add("text-sm", "font-medium", "text-gray-600");
+
+                    const progressBarContainer = document.createElement("div");
+                    progressBarContainer.classList.add("progress-bar-container");
+
+                    const progressBar = document.createElement("div");
+                    progressBar.classList.add("progress-bar", "bg-blue-500", "rounded-full");
+                    
+                    progressBarContainer.appendChild(progressBar);
+                    classPrediction.appendChild(label);
+                    classPrediction.appendChild(progressBarContainer);
+                    predictionResults.appendChild(classPrediction);
+                }
+
+            } catch (error) {
+                console.error("Error initializing model or webcam:", error);
+                loadingIndicator.classList.add("hidden");
+                videoOverlay.classList.remove("hidden");
+                videoOverlay.innerHTML = "<p class='text-white text-lg font-medium text-center'>Error loading model. Check console for details. <br>Did you paste the correct URL?</p>";
+            }
+        }
+
+        async function startWebcam() {
+            isWebcamMode = true;
+            video.classList.remove("hidden");
+            imagePreview.classList.add("hidden");
+            webcam = new tmImage.Webcam(400, 400, true);
+            await webcam.setup({ video: video }); 
+            await webcam.play();
+            isPredicting = true;
+            window.requestAnimationFrame(loop);
+        }
+
+        async function loop() {
+            if (isPredicting) {
+                if (isWebcamMode) {
+                    webcam.update();
+                    await predict(webcam.canvas);
+                }
+                window.requestAnimationFrame(loop);
+            }
+        }
+
+        async function predict(source) {
+            const prediction = await model.predict(source);
+            const children = predictionResults.children;
+            for (let i = 0; i < maxPredictions; i++) {
+                const classPrediction = prediction[i];
+                const labelDiv = children[i].querySelector("div");
+                const progressBar = children[i].querySelector(".progress-bar");
+                const probability = classPrediction.probability.toFixed(2);
+
+                labelDiv.innerHTML = `${classPrediction.className}: <span class="text-blue-600 font-bold">${(probability * 100).toFixed(0)}%</span>`;
+                progressBar.style.width = `${probability * 100}%`;
+                
+                // Set color of progress bar based on prediction
+                if (probability > 0.8) {
+                    progressBar.style.backgroundColor = '#2563eb'; // blue-600
+                } else if (probability > 0.5) {
+                    progressBar.style.backgroundColor = '#3b82f6'; // blue-500
+                } else {
+                    progressBar.style.backgroundColor = '#60a5fa'; // blue-400
+                }
+            }
+        }
+
+        startButton.addEventListener("click", init);
+        resetButton.addEventListener("click", () => {
+            isPredicting = false;
+            isWebcamMode = true;
+            if (webcam) {
+                webcam.stop();
+            }
+            imagePreview.classList.add("hidden");
+            video.classList.remove("hidden");
+            startButton.classList.remove("hidden");
+            imageUpload.parentElement.classList.remove("hidden");
+            resetButton.classList.add("hidden");
+            // Clear prediction bars
+            predictionResults.innerHTML = '';
+            // Reset overlay
+            videoOverlay.innerHTML = `<p class="text-white text-lg font-medium">Click "Start" to begin</p>`;
+            videoOverlay.classList.remove("hidden");
+        });
+
+        imageUpload.addEventListener("change", async (event) => {
+            if (event.target.files.length > 0) {
+                const file = event.target.files[0];
+                const reader = new FileReader();
+
+                reader.onload = async (e) => {
+                    // Hide webcam and show image
+                    isWebcamMode = false;
+                    video.classList.add("hidden");
+                    imagePreview.classList.remove("hidden");
+                    imagePreview.src = e.target.result;
+                    videoOverlay.classList.add("hidden");
+                    
+                    // Stop any ongoing webcam prediction
+                    if (isPredicting && webcam) {
+                        webcam.stop();
+                    }
+                    isPredicting = false;
+
+                    // Hide buttons and show reset
+                    startButton.classList.add("hidden");
+                    imageUpload.parentElement.classList.add("hidden");
+                    resetButton.classList.remove("hidden");
+
+                    // Clear previous predictions
+                    predictionResults.innerHTML = '';
+                    
+                    // Create prediction bars
+                    for (let i = 0; i < maxPredictions; i++) {
+                        const classPrediction = document.createElement("div");
+                        classPrediction.classList.add("w-full", "space-y-1");
+                        
+                        const label = document.createElement("div");
+                        label.classList.add("text-sm", "font-medium", "text-gray-600");
+
+                        const progressBarContainer = document.createElement("div");
+                        progressBarContainer.classList.add("progress-bar-container");
+
+                        const progressBar = document.createElement("div");
+                        progressBar.classList.add("progress-bar", "bg-blue-500", "rounded-full");
+                        
+                        progressBarContainer.appendChild(progressBar);
+                        classPrediction.appendChild(label);
+                        classPrediction.appendChild(progressBarContainer);
+                        predictionResults.appendChild(classPrediction);
+                    }
+                    
+                    // Run prediction on the uploaded image
+                    await predict(imagePreview);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Initialize the model on page load, but don't start the webcam yet.
+        (async () => {
+            if (URL === "YOUR_TEACHABLE_MACHINE_MODEL_URL") {
+                console.error("Please update the 'URL' variable with your Teachable Machine model URL.");
+                return;
+            }
+            loadingIndicator.classList.remove("hidden");
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+            try {
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+                loadingIndicator.classList.add("hidden");
+            } catch (error) {
+                console.error("Error loading model:", error);
+                loadingIndicator.classList.add("hidden");
+                videoOverlay.innerHTML = "<p class='text-white text-lg font-medium text-center'>Error loading model. Check console for details. <br>Did you paste the correct URL?</p>";
+            }
+        })();
+    </script>
+</body>
+</html>

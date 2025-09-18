@@ -32,4 +32,10 @@ GEMINI_API_KEY=your_api_key_here
 python app.py
 ````
 
+14. Added a shareable link for model:
+````
+https://teachablemachine.withgoogle.com/models/pHQ_FEGV2/
+````
+
 ![alt](./images/food_classifier.gif)
+
