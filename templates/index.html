@@ -4,71 +4,93 @@
     <meta charset="UTF-8" />
     <title>Smart Food Classifier</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.tailwindcss.com"></script>
   </head>
-  <body>
-    <h1>🍔 Smart Food Classifier</h1>
-    <p>
-      Upload a food image to predict if it is a Fruit, Vegetable, Snack or
-      Drink.
-    </p>
+  <body class="bg-gradient-to-br from-green-300 to-blue-400 min-h-screen font-sans text-gray-800 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl p-8 max-w-2xl w-full text-center space-y-6">
+      <div class="flex flex-col items-center">
+        <h1 class="text-5xl font-extrabold text-green-600 mb-2 tracking-wide">
+          🍔 Smart Food Classifier
+        </h1>
+        <p class="text-xl text-gray-600">
+          Upload a food image to predict if it's a <span class="font-bold text-yellow-500">Fruit</span>, <span class="font-bold text-green-500">Vegetable</span>, <span class="font-bold text-red-500">Snack</span>, or <span class="font-bold text-blue-500">Drink</span>.
+        </p>
+      </div>
 
-    <input type="file" id="imageUpload" accept="image/*" />
-    <br /><br />
-    <img
-      id="uploadedImage"
-      src="#"
-      alt="Uploaded Image"
-      style="max-width: 300px; display: none"
-    />
-    <div id="label-container"></div>
-    <hr />
-    <div id="loading-message" style="display: none">
-      🤖 Thinking of something smart about your food...
+      <div class="flex flex-col items-center space-y-4">
+        <label for="imageUpload" class="cursor-pointer bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold py-3 px-8 rounded-full shadow-lg hover:shadow-xl transition-transform transform hover:scale-105 duration-300">
+          Choose Image
+        </label>
+        <input type="file" id="imageUpload" accept="image/*" class="hidden" />
+
+        <img
+          id="uploadedImage"
+          src="#"
+          alt="Uploaded Image"
+          class="max-w-xs md:max-w-sm rounded-lg shadow-md border-2 border-gray-200 mt-4 transition-all duration-500 hidden"
+        />
+      </div>
+
+      <div id="loading-message" class="flex items-center justify-center space-x-2 text-lg text-gray-500 animate-pulse hidden">
+        <svg class="animate-spin h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>🤖 Thinking of something smart about your food...</span>
+      </div>
+
+      <div id="prediction-results" class="space-y-4 hidden">
+        <div id="label-container" class="space-y-2"></div>
+        <div id="gemini-response" class="bg-gray-100 rounded-lg p-6 text-left shadow-inner transition-all duration-300"></div>
+      </div>
+      
     </div>
 
-    <div
-      id="gemini-response"
-      style="margin-top: 20px; font-style: italic"
-    ></div>
-
-    <!-- TensorFlow.js + Teachable Machine -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
 
     <script>
       const MODEL_URL = "/static/my_model/";
-      let model, labelContainer;
+      let model, labelContainer, predictionResults;
 
       async function loadModel() {
         const modelURL = MODEL_URL + "model.json";
         const metadataURL = MODEL_URL + "metadata.json";
         model = await tmImage.load(modelURL, metadataURL);
         labelContainer = document.getElementById("label-container");
+        predictionResults = document.getElementById("prediction-results");
       }
 
       async function predictFromImage(image) {
         const prediction = await model.predict(image);
         labelContainer.innerHTML = "";
+        
+        prediction.sort((a, b) => b.probability - a.probability);
+
         prediction.forEach((p) => {
-          const label = `${p.className}: ${p.probability.toFixed(2)}`;
+          const label = p.className;
+          const probability = (p.probability * 100).toFixed(2);
           const div = document.createElement("div");
-          div.textContent = label;
+          div.classList.add("flex", "justify-between", "items-center", "font-medium");
+          div.innerHTML = `
+            <span class="text-lg">${label}</span>
+            <span class="text-lg text-gray-500">${probability}%</span>
+          `;
           labelContainer.appendChild(div);
         });
 
-        // Pass the top prediction to Gemini
-        const topPrediction = prediction.reduce((max, p) =>
-          p.probability > max.probability ? p : max
-        );
+        predictionResults.classList.remove("hidden");
+
+        const topPrediction = prediction[0];
         fetchGeminiAdvice(topPrediction.className);
       }
 
-      // Function to fetch advice from Gemini
       async function fetchGeminiAdvice(category) {
         const loadingMessage = document.getElementById("loading-message");
         const responseBox = document.getElementById("gemini-response");
-        loadingMessage.style.display = "block";
-        responseBox.innerText = "";
+        
+        loadingMessage.classList.remove("hidden");
+        responseBox.innerHTML = "";
 
         try {
           const res = await fetch("/gemini", {
@@ -80,12 +102,15 @@
           });
 
           const data = await res.json();
-          responseBox.innerText = data.advice;
+          responseBox.innerHTML = `
+            <h3 class="text-xl font-bold mb-2 text-indigo-600">Gemini's Take 🤖</h3>
+            <p class="text-gray-700">${data.advice}</p>
+          `;
         } catch (e) {
-          responseBox.innerText =
-            "Something went wrong fetching Gemini advice.";
+          responseBox.innerHTML =
+            '<p class="text-red-500">Something went wrong fetching Gemini advice.</p>';
         } finally {
-          loadingMessage.style.display = "none";
+          loadingMessage.classList.add("hidden");
         }
       }
 
@@ -97,7 +122,7 @@
 
           const img = document.getElementById("uploadedImage");
           img.src = window.URL.createObjectURL(file);
-          img.style.display = "block";
+          img.classList.remove("hidden");
 
           img.onload = async () => {
             await predictFromImage(img);
